@@ -4,6 +4,8 @@ import numpy as np
 import pickle
 import soundfile as sf
 from midi import Note
+import torch
+from constants import *
 
 TRAILING_CHUNK_THRESHOLD = 0.5
 
@@ -89,6 +91,42 @@ def compute_chunks(
 
         yield (start_time, end_time, chunk_data, chunk_notes)
         prev = end
+
+
+def generate_note_labels(
+    notes: List[Note], n_hops: int, sample_rate: int
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Generates labels from the notes. Label values are as follows:
+
+        3 - Onset
+        2 - Frame
+        1 - Offset
+
+    Args:
+        notes:       The notes to tranform into labels.
+        n_hops:      The total number of hops in the audio chunk.
+        sample_rate: The audio sample rate.
+
+    Returns:
+        Tuples containing the labels and velocities.
+    """
+    n_keys = MAX_MIDI - MIN_MIDI + 1
+
+    labels = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
+    velocities = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
+
+    for note in notes:
+        onset_hop = int(note.onset * sample_rate) // HOP_LENGTH
+        offset_hop = int(note.offset * sample_rate) // HOP_LENGTH
+
+        key = note.value - MIN_MIDI
+        labels[onset_hop, key] = 3
+        labels[onset_hop:offset_hop, key] = 2
+        labels[offset_hop, key] = 1
+        velocities[onset_hop:offset_hop, key] = note.velocity
+
+    return labels, velocities
 
 
 def write_chunk(
