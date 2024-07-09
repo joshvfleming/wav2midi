@@ -1,10 +1,15 @@
 from collections import defaultdict
+from typing import List, Optional, Self
 from mido import MetaMessage, MidiFile
 
 CONTROL_SUSTAIN = 64
 
 
 class Event:
+    """
+    Represents a MIDI event.
+    """
+
     def __init__(self, message):
         self.message = message
 
@@ -44,7 +49,13 @@ class Event:
 
 
 class Note:
-    def __init__(self, value, onset, velocity, offset=None):
+    """
+    Represents a note.
+    """
+
+    def __init__(
+        self, value: int, onset: float, velocity: int, offset: Optional[float] = None
+    ):
         self.value = value
         self.onset = onset
         self.velocity = velocity
@@ -58,7 +69,17 @@ class Note:
             f"velocity={self.velocity})"
         )
 
-    def read_file(path):
+    def read_file(path: str) -> List[Self]:
+        """
+        Reads the file, parses the midi, and returns a structure containing note
+        onset, offset, and velocity information.
+
+        Args:
+            path: The path to the midi file.
+
+        Returns:
+            A list of notes read from the file.
+        """
         midi = MidiFile(path, clip=True)
 
         notes = []
