@@ -11,7 +11,13 @@ import wandb
 
 
 def train(
-    datapath: str, learning_rate: float, batch_size: int, device: str = DEFAULT_DEVICE
+    datapath: str,
+    learning_rate: float,
+    log_freq: int,
+    batch_size: int,
+    learning_rate_step_size: int = 10000,
+    learning_rate_gamma: float = 0.98,
+    device: str = DEFAULT_DEVICE,
 ):
     """
     Main training loop
@@ -23,16 +29,14 @@ def train(
     model = Wav2Midi(N_MELS, N_KEYS).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    wandb.init()
-    wandb.watch(model, log_freq=100)
-
-    learning_rate_step_size = 10000
-    learning_rate_gamma = 0.98
+    run = wandb.init()
+    run.watch(model, log_freq=log_freq)
 
     scheduler = StepLR(
         optim, step_size=learning_rate_step_size, gamma=learning_rate_gamma
     )
 
+    i = 0
     for audio, onsets, frames, velocities in tqdm(loader):
         mel = melspectrogram(audio)
         onset_pred, frame_pred, velocity_pred = model(mel)
@@ -42,16 +46,27 @@ def train(
 
         frame_pred = frame_pred[:, : frames.size(1), :]
         frame_loss = F.binary_cross_entropy(frame_pred, frames)
+        total_frame_loss = onset_loss + frame_loss
 
         velocity_pred = velocity_pred[:, : velocities.size(1), :]
         velocity_loss = F.mse_loss(velocity_pred, velocities)
 
+        if i % log_freq == 0:
+            run.log(
+                {
+                    "Train Onset+Frame Loss": total_frame_loss,
+                    "Train Velocity Loss": velocity_loss,
+                }
+            )
+
         optim.zero_grad()
-        (onset_loss + frame_loss).backward()
+        total_frame_loss.backward()
         velocity_loss.backward()
 
         optim.step()
         scheduler.step()
+
+        i += 1
 
 
 if __name__ == "__main__":
@@ -60,6 +75,12 @@ if __name__ == "__main__":
     parser.add_argument("outpath")
     parser.add_argument("-b", "--batch-size", type=int, default=10)
     parser.add_argument("-l", "--learning-rate", type=float, default=1e-4)
+    parser.add_argument("-f", "--log-freq", type=int, default=100)
     args = parser.parse_args()
 
-    train(args.datapath, args.learning_rate, args.batch_size)
+    train(
+        datapath=args.datapath,
+        learning_rate=args.learning_rate,
+        log_freq=args.log_freq,
+        batch_size=args.batch_size,
+    )
