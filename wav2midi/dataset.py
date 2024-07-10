@@ -1,11 +1,18 @@
+import argparse
 from copy import copy
-from typing import List, Tuple
+from typing import Dict, List, Tuple
+import uuid
 import numpy as np
 import pickle
+import os
+import sys
 import soundfile as sf
 from midi import Note
 import torch
+import ray
+from ray.experimental import tqdm_ray
 from constants import *
+import midi
 
 TRAILING_CHUNK_THRESHOLD = 0.5
 
@@ -118,7 +125,9 @@ def generate_note_labels(
 
     for note in notes:
         onset_hop = int(note.onset * sample_rate) // HOP_LENGTH
+        onset_hop = min(onset_hop, n_hops - 1)
         offset_hop = int(note.offset * sample_rate) // HOP_LENGTH
+        offset_hop = min(offset_hop, n_hops - 1)
 
         key = note.value - MIN_MIDI
         labels[onset_hop, key] = 3
@@ -129,17 +138,81 @@ def generate_note_labels(
     return labels, velocities
 
 
-def write_chunk(
-    chunk_data: np.ndarray, chunk_notes: List[Note], sample_rate: int, path: str
-):
+def record_id(record: Dict[str, torch.Tensor]) -> int:
     """
-    Writes the chunk to disk.
+    Generates a hashed id for the record.
 
     Args:
-        chunk_data: The audio data.
-        chunk_notes: The notes.
-        path: The path where files will be written.
+        record: The record to generate an id for.
+
+    Returns:
+        int id
     """
-    sf.write(f"{path}.flac", chunk_data, sample_rate)
-    with open(f"{path}.pkl", "wb") as f:
-        pickle.dump(chunk_notes, f)
+    mask = (1 << sys.hash_info.width) - 1
+    return hash(tuple(sorted(record.items()))) & mask
+
+
+@ray.remote
+def process_data_source(source: str, outpath: str, progress: tqdm_ray.tqdm):
+    """
+    Preprocesses a single input file.
+
+    Args:
+        source:  The input file path.
+        outpath: The destination path.
+    """
+    data, sample_rate = sf.read(f"{source}.flac", dtype="float32")
+    notes = midi.Note.read_file(f"{source}.midi")
+
+    for _, _, chunk_data, chunk_notes in compute_chunks(
+        data, notes, CHUNK_SIZE_S, sample_rate
+    ):
+        labels, velocities = generate_note_labels(
+            chunk_notes, len(chunk_data) // HOP_LENGTH, sample_rate
+        )
+
+        record = dict(
+            data=torch.tensor(chunk_data), labels=labels, velocities=velocities
+        )
+
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+
+        id = record_id(record)
+        outfile = os.path.join(outpath, f"{id}.pt")
+        if not os.path.exists(outfile):
+            torch.save(record, outfile)
+
+    progress.update.remote(1)
+
+
+def process_dataset(inpath: str, outpath: str):
+    """
+    Reads the raw dataset and produces a preprocessed dataset that can be read directly
+    by the training pipeline.
+
+    Args:
+        inpath:    The source path containing the raw MAESTRO dataset.
+        outpath:   The destination path where the preprocessed dataset will be written.
+    """
+    sources = set()
+    for file in os.listdir(inpath):
+        if file.endswith(".flac"):
+            source = file.split(".")[0]
+            sources.add(os.path.join(inpath, source))
+
+    ray.init()
+
+    progress = ray.remote(tqdm_ray.tqdm).remote(total=len(sources))
+    ray.get(
+        [process_data_source.remote(source, outpath, progress) for source in sources]
+    )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("inpath")
+    parser.add_argument("outpath")
+    args = parser.parse_args()
+
+    process_dataset(args.inpath, args.outpath)

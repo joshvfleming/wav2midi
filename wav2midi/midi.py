@@ -131,7 +131,7 @@ class Note:
                     sustained_notes.clear()
 
         # For any remaining active notes, record end time as offset
-        for notes in active_notes.values():
+        for note in active_notes.values():
             note.offset = time
 
         return notes
