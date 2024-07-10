@@ -36,12 +36,11 @@ class MAESTRO(Dataset):
         padded = torch.zeros(SAMPLE_RATE * (CHUNK_SIZE_S + 1))
         padded[: len(data)] = data
 
-        onsets = (record["labels"] == 3).float().to(self.device)
-        offsets = (record["labels"] == 1).float().to(self.device)
-        frames = (record["labels"] > 1).float().to(self.device)
+        onsets = record["onsets"].float().to(self.device)
+        frames = record["frames"].float().to(self.device)
         velocities = record["velocities"].float().to(self.device)
 
-        return padded.to(self.device), onsets, offsets, frames, velocities
+        return padded.to(self.device), onsets, frames, velocities
 
     def __len__(self):
         return len(self.files)
@@ -134,23 +133,20 @@ def generate_note_labels(
     notes: List[Note], sample_rate: int
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Generates labels from the notes. Label values are as follows:
-
-        3 - Onset
-        2 - Frame
-        1 - Offset
+    Generates labels from the notes.
 
     Args:
         notes:       The notes to tranform into labels.
         sample_rate: The audio sample rate.
 
     Returns:
-        Tuples containing the labels and velocities.
+        Tuple containing the onsets, frames, and velocities.
     """
     n_keys = MAX_MIDI - MIN_MIDI + 1
     n_hops = (CHUNK_SIZE_S * sample_rate) // HOP_LENGTH
 
-    labels = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
+    onsets = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
+    frames = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
     velocities = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
 
     for note in notes:
@@ -160,12 +156,11 @@ def generate_note_labels(
         offset_hop = min(offset_hop, n_hops - 1)
 
         key = note.value - MIN_MIDI
-        labels[onset_hop, key] = 3
-        labels[onset_hop+1:offset_hop, key] = 2
-        labels[offset_hop, key] = 1
+        onsets[onset_hop, key] = 1
+        frames[onset_hop:offset_hop, key] = 1
         velocities[onset_hop:offset_hop, key] = note.velocity
 
-    return labels, velocities
+    return onsets, frames, velocities
 
 
 def record_id(record: Dict[str, torch.Tensor]) -> int:
@@ -197,10 +192,13 @@ def process_data_source(source: str, outpath: str, progress: tqdm_ray.tqdm):
     for _, _, chunk_data, chunk_notes in compute_chunks(
         data, notes, CHUNK_SIZE_S, sample_rate
     ):
-        labels, velocities = generate_note_labels(chunk_notes, sample_rate)
+        onsets, frames, velocities = generate_note_labels(chunk_notes, sample_rate)
 
         record = dict(
-            data=torch.tensor(chunk_data), labels=labels, velocities=velocities
+            data=torch.tensor(chunk_data),
+            onsets=onsets,
+            frames=frames,
+            velocities=velocities,
         )
 
         if not os.path.exists(outpath):
