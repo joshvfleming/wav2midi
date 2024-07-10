@@ -88,37 +88,3 @@ class Wav2Midi(nn.Module):
         frame_pred = self.combined_stack(combined_pred)
         velocity_pred = self.velocity_stack(mel)
         return onset_pred, frame_pred, velocity_pred
-
-    def run_on_batch(self, batch):
-        audio = batch["data"]
-        onset_label = batch["onsets"]
-        frame_label = batch["frames"]
-        velocity_label = batch["velocities"]
-
-        mel = melspectrogram(audio)
-        onset_pred, frame_pred, velocity_pred = self(mel)
-
-        predictions = {
-            "onsets": onset_pred.reshape(*onset_label.shape),
-            "frames": frame_pred.reshape(*frame_label.shape),
-            "velocities": velocity_pred.reshape(*velocity_label.shape),
-        }
-
-        losses = {
-            "onsets": F.binary_cross_entropy(predictions["onsets"], onset_label),
-            "frames": F.binary_cross_entropy(predictions["frames"], frame_label),
-            "velocities": self.velocity_loss(
-                predictions["velocities"], velocity_label, onset_label
-            ),
-        }
-
-        return predictions, losses
-
-    def velocity_loss(self, velocity_pred, velocity_label, onset_label):
-        denominator = onset_label.sum()
-        if denominator.item() == 0:
-            return denominator
-        else:
-            return (
-                onset_label * (velocity_label - velocity_pred) ** 2
-            ).sum() / denominator
