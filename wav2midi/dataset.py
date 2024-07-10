@@ -9,12 +9,42 @@ import sys
 import soundfile as sf
 from midi import Note
 import torch
+from torch.utils.data import Dataset
 import ray
 from ray.experimental import tqdm_ray
 from constants import *
 import midi
 
 TRAILING_CHUNK_THRESHOLD = 0.5
+
+
+class MAESTRO(Dataset):
+    def __init__(self, path: str, device=DEFAULT_DEVICE):
+        self.path = path
+        self.files = []
+        self.device = device
+
+        for file in os.listdir(path):
+            if file.endswith(".pt"):
+                self.files.append(file)
+
+    def __getitem__(self, index):
+        file = os.path.join(self.path, self.files[index])
+        record = torch.load(file)
+
+        data = record["data"]
+        padded = torch.zeros(SAMPLE_RATE * (CHUNK_SIZE_S + 1))
+        padded[: len(data)] = data
+
+        onsets = (record["labels"] == 3).float().to(self.device)
+        offsets = (record["labels"] == 1).float().to(self.device)
+        frames = (record["labels"] > 1).float().to(self.device)
+        velocities = record["velocities"].float().to(self.device)
+
+        return padded.to(self.device), onsets, offsets, frames, velocities
+
+    def __len__(self):
+        return len(self.files)
 
 
 def compute_chunk_bounds(
@@ -38,7 +68,7 @@ def compute_chunk_bounds(
         j = i
 
         # We split at zero-crossings of the signal
-        while np.sign(data[j]) == np.sign(data[j + 1]):
+        while (j + 1 < len(data)) and (np.sign(data[j]) == np.sign(data[j + 1])):
             j += 1
         bounds.append(j)
 
@@ -101,7 +131,7 @@ def compute_chunks(
 
 
 def generate_note_labels(
-    notes: List[Note], n_hops: int, sample_rate: int
+    notes: List[Note], sample_rate: int
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Generates labels from the notes. Label values are as follows:
@@ -112,13 +142,13 @@ def generate_note_labels(
 
     Args:
         notes:       The notes to tranform into labels.
-        n_hops:      The total number of hops in the audio chunk.
         sample_rate: The audio sample rate.
 
     Returns:
         Tuples containing the labels and velocities.
     """
     n_keys = MAX_MIDI - MIN_MIDI + 1
+    n_hops = (CHUNK_SIZE_S * sample_rate) // HOP_LENGTH
 
     labels = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
     velocities = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
@@ -131,7 +161,7 @@ def generate_note_labels(
 
         key = note.value - MIN_MIDI
         labels[onset_hop, key] = 3
-        labels[onset_hop:offset_hop, key] = 2
+        labels[onset_hop+1:offset_hop, key] = 2
         labels[offset_hop, key] = 1
         velocities[onset_hop:offset_hop, key] = note.velocity
 
@@ -167,9 +197,7 @@ def process_data_source(source: str, outpath: str, progress: tqdm_ray.tqdm):
     for _, _, chunk_data, chunk_notes in compute_chunks(
         data, notes, CHUNK_SIZE_S, sample_rate
     ):
-        labels, velocities = generate_note_labels(
-            chunk_notes, len(chunk_data) // HOP_LENGTH, sample_rate
-        )
+        labels, velocities = generate_note_labels(chunk_notes, sample_rate)
 
         record = dict(
             data=torch.tensor(chunk_data), labels=labels, velocities=velocities
