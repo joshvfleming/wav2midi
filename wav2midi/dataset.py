@@ -7,18 +7,17 @@ import pickle
 import os
 import sys
 import soundfile as sf
-from midi import Note
 import torch
 from torch.utils.data import Dataset
 import ray
 from ray.experimental import tqdm_ray
-from constants import *
-import midi
+from wav2midi.constants import *
+from wav2midi.midi import Note
 
 TRAILING_CHUNK_THRESHOLD = 0.5
 
 
-class MAESTRO(Dataset):
+class MaestroDataset(Dataset):
     def __init__(self, path: str, device=DEFAULT_DEVICE):
         self.path = path
         self.files = []
