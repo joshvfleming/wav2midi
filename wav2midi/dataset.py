@@ -1,4 +1,3 @@
-import argparse
 from copy import copy
 from typing import Dict, List, Tuple
 import uuid
@@ -129,7 +128,7 @@ def compute_chunks(
 
 
 def generate_note_labels(
-    notes: List[Note], sample_rate: int
+    notes: List[Note], sample_rate: int, max_velocity: int
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Generates labels from the notes.
@@ -146,7 +145,7 @@ def generate_note_labels(
 
     onsets = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
     frames = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
-    velocities = torch.zeros(n_hops, n_keys, dtype=torch.uint8)
+    velocities = torch.zeros(n_hops, n_keys, dtype=torch.float16)
 
     for note in notes:
         onset_hop = int(note.onset * sample_rate) // HOP_LENGTH
@@ -157,7 +156,7 @@ def generate_note_labels(
         key = note.value - MIN_MIDI
         onsets[onset_hop, key] = 1
         frames[onset_hop:offset_hop, key] = 1
-        velocities[onset_hop:offset_hop, key] = note.velocity
+        velocities[onset_hop:offset_hop, key] = note.velocity / max_velocity
 
     return onsets, frames, velocities
 
@@ -186,12 +185,16 @@ def process_data_source(source: str, outpath: str, progress: tqdm_ray.tqdm):
         outpath: The destination path.
     """
     data, sample_rate = sf.read(f"{source}.flac", dtype="float32")
-    notes = midi.Note.read_file(f"{source}.midi")
+    notes = Note.read_file(f"{source}.midi")
+
+    max_velocity = max([n.velocity for n in notes])
 
     for _, _, chunk_data, chunk_notes in compute_chunks(
         data, notes, CHUNK_SIZE_S, sample_rate
     ):
-        onsets, frames, velocities = generate_note_labels(chunk_notes, sample_rate)
+        onsets, frames, velocities = generate_note_labels(
+            chunk_notes, sample_rate, max_velocity
+        )
 
         record = dict(
             data=torch.tensor(chunk_data),
@@ -232,12 +235,3 @@ def process_dataset(inpath: str, outpath: str):
     ray.get(
         [process_data_source.remote(source, outpath, progress) for source in sources]
     )
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("inpath")
-    parser.add_argument("outpath")
-    args = parser.parse_args()
-
-    process_dataset(args.inpath, args.outpath)

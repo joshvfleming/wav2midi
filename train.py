@@ -129,7 +129,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("datapath")
     parser.add_argument("outpath")
-    parser.add_argument("-b", "--batch-size", type=int, default=20)
+    parser.add_argument("-b", "--batch-size", type=int, default=10)
     parser.add_argument("-l", "--learning-rate", type=float, default=6e-4)
     parser.add_argument("-f", "--log-freq", type=int, default=100)
     parser.add_argument("-e", "--eval-freq", type=int, default=200)
