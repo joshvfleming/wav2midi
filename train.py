@@ -1,4 +1,5 @@
 import argparse
+import os
 from typing import Tuple
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_norm_
@@ -36,6 +37,7 @@ def compute_loss(
 
 def train(
     datapath: str,
+    outpath: str,
     learning_rate: float,
     log_freq: int,
     eval_freq: int,
@@ -79,9 +81,10 @@ def train(
             if i % log_freq == 0:
                 run.log(
                     {
-                        "Train Onset+Frame Loss": total_frame_loss,
-                        "Train Velocity Loss": velocity_loss,
-                    }
+                        "Train/Onset+Frame Loss": total_frame_loss,
+                        "Train/Velocity Loss": velocity_loss,
+                    },
+                    step=i,
                 )
 
             optim.zero_grad()
@@ -115,14 +118,22 @@ def train(
 
                     run.log(
                         {
-                            "Eval Onset+Frame Loss": val_total_frame_loss,
-                            "Eval Velocity Loss": val_velocity_loss,
-                        }
+                            "Eval/Onset+Frame Loss": val_total_frame_loss,
+                            "Eval/Velocity Loss": val_velocity_loss,
+                            "epoch": epoch,
+                        },
+                        step=i,
                     )
 
                 model.train()
 
             i += 1
+
+        # Save checkpoint
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+
+        torch.save(model, os.path.join(outpath, f"model-{epoch}.pt"))
 
 
 if __name__ == "__main__":
@@ -140,6 +151,7 @@ if __name__ == "__main__":
 
     train(
         datapath=args.datapath,
+        outpath=args.outpath,
         learning_rate=args.learning_rate,
         log_freq=args.log_freq,
         eval_freq=args.eval_freq,
