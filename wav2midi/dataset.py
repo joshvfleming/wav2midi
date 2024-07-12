@@ -160,7 +160,7 @@ def generate_note_labels(
         offset_hop = min(offset_hop, n_hops - 1)
 
         key = note.value - MIN_MIDI
-        onsets[onset_left_hop:onset_right_hop, key] = 1
+        onsets[onset_left_hop:onset_right_hop+1, key] = 1
         frames[onset_left_hop:offset_hop, key] = 1
         velocities[onset_left_hop:offset_hop, key] = note.velocity / max_velocity
 

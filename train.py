@@ -158,11 +158,11 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--learning-rate", type=float, default=6e-4)
     parser.add_argument("-f", "--log-freq", type=int, default=100)
     parser.add_argument("-e", "--eval-freq", type=int, default=200)
-    parser.add_argument("-n", "--epochs", type=int, default=15)
+    parser.add_argument("-n", "--epochs", type=int, default=10)
     parser.add_argument("-c", "--clip-gradient-norm", type=float, default=3.0)
     parser.add_argument("-v", "--eval-batch-size", type=int, default=50)
     parser.add_argument("-r", "--frame-loss-w", type=float, default=1.0)
-    parser.add_argument("-x", "--model-complexity", type=int, default=16)
+    parser.add_argument("-x", "--model-complexity", type=int, default=32)
     parser.add_argument("-w", "--log-wandb", type=bool, default=True)
     args = parser.parse_args()
 
