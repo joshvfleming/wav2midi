@@ -1,6 +1,9 @@
 from collections import defaultdict
 from typing import List, Optional, Self
-from mido import MetaMessage, MidiFile
+from mido import MetaMessage, Message, MidiFile, MidiTrack
+from mido.midifiles.units import second2tick
+import torch
+from wav2midi.constants import *
 
 CONTROL_SUSTAIN = 64
 
@@ -83,7 +86,7 @@ class Note:
         midi = MidiFile(path, clip=True)
 
         notes = []
-        time = 0
+        time = 0.0
         sustain_on = False
         active_notes = {}
         sustained_notes = set()
@@ -135,3 +138,86 @@ class Note:
             note.offset = time
 
         return notes
+
+    def read_tensors(
+        onsets: torch.Tensor, frames: torch.Tensor, velocities: torch.Tensor
+    ):
+        """
+        Reads tensors with onset, frame, and velocity information into Notes.
+
+        Args:
+            onsets: Binary tensor that identifies note onsets by [time hop, key].
+            frames: Binary tensor that identifies frames by [time hop, key].
+            velocities: Note velocities by [time hop, key].
+
+        Returns:
+            A list of Notes
+        """
+        notes = []
+        active_notes = {}
+        time = 0.0
+        n_hops = onsets.shape[0]
+
+        for hop in range(n_hops):
+            # Onsets
+            on = onsets[hop].nonzero().flatten().tolist()
+            for note_val in on:
+                velocity = velocities[hop][note_val].item()
+
+                # If note is already active, end the previous instance
+                if note_val in active_notes:
+                    active_notes[note_val].offset = time
+
+                note = Note(note_val, onset=time, velocity=velocity)
+                notes.append(note)
+                active_notes[note_val] = note
+
+            # Offsets
+            if hop > 0:
+                frame = set(frames[hop].nonzero().flatten().tolist())
+                prev_frame = frames[hop - 1].nonzero().flatten().tolist()
+                for note_val in prev_frame:
+                    if not note_val in frame and note_val in active_notes:
+                        active_notes[note_val].offset = time
+                        del active_notes[note_val]
+
+            time += HOP_LENGTH / SAMPLE_RATE
+
+        # For any remaining active notes, record end time as offset
+        for note in active_notes.values():
+            note.offset = time
+
+        return notes
+
+
+def notes_to_midi(notes: List[Note], tempo: int = MIDI_DEFAULT_TEMPO) -> MidiFile:
+    mid = MidiFile(ticks_per_beat=MIDI_DEFAULT_TICKS_PER_BEAT)
+
+    metatrack = MidiTrack()
+    mid.tracks.append(metatrack)
+
+    metatrack.append(MetaMessage(type="set_tempo", tempo=MIDI_DEFAULT_TEMPO, time=0))
+    metatrack.append(MetaMessage(type="end_of_track", time=1))
+
+    track = MidiTrack()
+    mid.tracks.append(track)
+
+    events = []
+    for note in notes:
+        events.append((note.onset, "note_on", note))
+        events.append((note.offset, "note_off", note))
+    events.sort(key=lambda x: x[0])
+
+    prevtime = 0.0
+    for i, (time, event_type, note) in enumerate(events):
+        ticks = second2tick(time - prevtime, MIDI_DEFAULT_TICKS_PER_BEAT, tempo)
+        track.append(
+            Message(
+                type=event_type, note=note.value, velocity=note.velocity, time=ticks
+            )
+        )
+        prevtime = time
+
+    track.append(MetaMessage(type="end_of_track", time=1))
+
+    return mid
