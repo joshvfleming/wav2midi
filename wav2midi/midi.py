@@ -196,7 +196,7 @@ def notes_to_midi(notes: List[Note], tempo: int = MIDI_DEFAULT_TEMPO) -> MidiFil
     metatrack = MidiTrack()
     mid.tracks.append(metatrack)
 
-    metatrack.append(MetaMessage(type="set_tempo", tempo=MIDI_DEFAULT_TEMPO, time=0))
+    metatrack.append(MetaMessage(type="set_tempo", tempo=tempo, time=0))
     metatrack.append(MetaMessage(type="end_of_track", time=1))
 
     track = MidiTrack()
@@ -210,11 +210,10 @@ def notes_to_midi(notes: List[Note], tempo: int = MIDI_DEFAULT_TEMPO) -> MidiFil
 
     prevtime = 0.0
     for i, (time, event_type, note) in enumerate(events):
+        note_val = note.value + MIN_MIDI
         ticks = second2tick(time - prevtime, MIDI_DEFAULT_TICKS_PER_BEAT, tempo)
         track.append(
-            Message(
-                type=event_type, note=note.value, velocity=note.velocity, time=ticks
-            )
+            Message(type=event_type, note=note_val, velocity=note.velocity, time=ticks)
         )
         prevtime = time
 
