@@ -51,7 +51,7 @@ class ExtractLSTMTensor(nn.Module):
 
 
 class Wav2Midi(nn.Module):
-    def __init__(self, input_dim, output_dim, model_complexity=48):
+    def __init__(self, input_dim, output_dim, model_complexity=24):
         super().__init__()
 
         model_size = model_complexity * 16

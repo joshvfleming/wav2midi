@@ -141,7 +141,7 @@ class Note:
 
     def read_tensors(
         onsets: torch.Tensor, frames: torch.Tensor, velocities: torch.Tensor
-    ):
+    ) -> List[Self]:
         """
         Reads tensors with onset, frame, and velocity information into Notes.
 
@@ -162,13 +162,17 @@ class Note:
             # Onsets
             on = onsets[hop].nonzero().flatten().tolist()
             for note_val in on:
-                velocity = velocities[hop][note_val].item()
+                velocity = velocities[hop, note_val].item()
+
+                # If the onset spands consecutive frames, skip
+                if hop > 0 and onsets[hop-1, note_val].item():
+                    continue
 
                 # If note is already active, end the previous instance
                 if note_val in active_notes:
                     active_notes[note_val].offset = time
 
-                note = Note(note_val, onset=time, velocity=velocity)
+                note = Note(note_val + MIN_MIDI, onset=time, velocity=velocity)
                 notes.append(note)
                 active_notes[note_val] = note
 
@@ -210,10 +214,11 @@ def notes_to_midi(notes: List[Note], tempo: int = MIDI_DEFAULT_TEMPO) -> MidiFil
 
     prevtime = 0.0
     for i, (time, event_type, note) in enumerate(events):
-        note_val = note.value + MIN_MIDI
         ticks = second2tick(time - prevtime, MIDI_DEFAULT_TICKS_PER_BEAT, tempo)
         track.append(
-            Message(type=event_type, note=note_val, velocity=note.velocity, time=ticks)
+            Message(
+                type=event_type, note=note.value, velocity=note.velocity, time=ticks
+            )
         )
         prevtime = time
 

@@ -129,7 +129,7 @@ def compute_chunks(
 
 def generate_note_labels(
     notes: List[Note], sample_rate: int, max_velocity: int
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Generates labels from the notes.
 
@@ -148,15 +148,21 @@ def generate_note_labels(
     velocities = torch.zeros(n_hops, n_keys, dtype=torch.float16)
 
     for note in notes:
-        onset_hop = int(note.onset * sample_rate) // HOP_LENGTH
-        onset_hop = min(onset_hop, n_hops - 1)
-        offset_hop = int(note.offset * sample_rate) // HOP_LENGTH
+        onset_left_hop = int(round(note.onset * sample_rate / HOP_LENGTH))
+        onset_left_hop = min(onset_left_hop, n_hops - 1)
+
+        # Truncate onsets to 32ms, as per paper
+        onset_right = note.onset + min(note.offset - note.onset, 0.032)
+        onset_right_hop = int(round(onset_right * sample_rate / HOP_LENGTH))
+        onset_right_hop = min(onset_right_hop, n_hops - 1)
+
+        offset_hop = int(round(note.offset * sample_rate / HOP_LENGTH))
         offset_hop = min(offset_hop, n_hops - 1)
 
         key = note.value - MIN_MIDI
-        onsets[onset_hop, key] = 1
-        frames[onset_hop:offset_hop, key] = 1
-        velocities[onset_hop:offset_hop, key] = note.velocity / max_velocity
+        onsets[onset_left_hop:onset_right_hop, key] = 1
+        frames[onset_left_hop:offset_hop, key] = 1
+        velocities[onset_left_hop:offset_hop, key] = note.velocity / max_velocity
 
     return onsets, frames, velocities
 
