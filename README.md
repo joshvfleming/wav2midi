@@ -8,7 +8,7 @@ This repo contains a reproduction of the model wav2midi model described in the f
 The implementation is also inspired by [https://github.com/jongwook/onsets-and-frames](https://github.com/jongwook/onsets-and-frames).
 
 ## Demo
-This model produces transcriptions that capture much of the performance from the recording, but there are still some bugs with clipped and missing notes. Here's an example:
+The model produces transcriptions that capture much of the performance from the recording, but there are still some bugs with clipped and missing notes. Here's an example:
  - [Original recording](https://drive.google.com/file/d/191xMbfwhel2E8kbVLy4lQzDAzA3TN00w/view). Goldberg Variation 1 performed by Glenn Gould.
  - [Transcribed by wav2midi](https://drive.google.com/file/d/1Z84Yf5l8xB_bsHg8I26I3J4Wz104uRXl/view). For fun, now that we have a transcription, we can play back the piece with a completely different instrument, say a string section.
 - Or on [electric guitar](https://drive.google.com/file/d/1eTiLvHqmbbcrG8boJelk6jyxIsXwbxWg/view)?
