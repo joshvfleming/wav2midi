@@ -162,7 +162,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--clip-gradient-norm", type=float, default=3.0)
     parser.add_argument("-v", "--eval-batch-size", type=int, default=50)
     parser.add_argument("-r", "--frame-loss-w", type=float, default=1.0)
-    parser.add_argument("-x", "--model-complexity", type=int, default=32)
+    parser.add_argument("-x", "--model-complexity", type=int, default=48)
     parser.add_argument("-w", "--log-wandb", type=bool, default=True)
     args = parser.parse_args()
 

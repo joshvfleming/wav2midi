@@ -5,7 +5,7 @@ import numpy as np
 import pickle
 import os
 import sys
-import soundfile as sf
+import librosa
 import torch
 from torch.utils.data import Dataset
 import ray
@@ -160,7 +160,7 @@ def generate_note_labels(
         offset_hop = min(offset_hop, n_hops - 1)
 
         key = note.value - MIN_MIDI
-        onsets[onset_left_hop:onset_right_hop+1, key] = 1
+        onsets[onset_left_hop : onset_right_hop + 1, key] = 1
         frames[onset_left_hop:offset_hop, key] = 1
         velocities[onset_left_hop:offset_hop, key] = note.velocity / max_velocity
 
@@ -190,7 +190,9 @@ def process_data_source(source: str, outpath: str, progress: tqdm_ray.tqdm):
         source:  The input file path.
         outpath: The destination path.
     """
-    data, sample_rate = sf.read(f"{source}.flac", dtype="float32")
+    data, sample_rate = librosa.load(
+        f"{source}.flac", sr=SAMPLE_RATE, mono=True, dtype="float32"
+    )
     notes = Note.read_file(f"{source}.midi")
 
     max_velocity = max([n.velocity for n in notes])
